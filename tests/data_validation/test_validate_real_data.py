@@ -39,10 +39,13 @@ def workbook(path, sheet, rows):
                         f'<worksheet xmlns="{namespace}"><sheetData>{"".join(content)}</sheetData></worksheet>')
 
 
-def run(folder):
+def run(folder, review=None):
     output, errors = io.StringIO(), io.StringIO()
+    args = [str(folder)]
+    if review is not None:
+        args += ["--reviewed-links", str(review)]
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
-        status = validate_real_data.main([str(folder)])
+        status = validate_real_data.main(args)
     return status, output.getvalue(), errors.getvalue()
 
 
@@ -101,6 +104,67 @@ class ValidateRealDataTests(unittest.TestCase):
         self.assertEqual("", output)
         self.assertIn("columnas requeridas", errors)
         self.assertNotIn("Hidden Club", errors)
+
+
+class ReviewedLinksTests(unittest.TestCase):
+    def make_catalog(self, folder):
+        workbook(folder / CLUBS, "Equipas",
+                 [("ID", "Nombre"), (10, "Club Norte"), (20, "Same Club"), (30, "Same Club")])
+        workbook(folder / COACHES, "Treinadores",
+                 [("ID", "Equipo Actual"), (1, "Variant club")])
+        workbook(folder / PLAYERS.format(1), "Jogadores",
+                 [("ID", "Equipo Actual"), (1, "Same Club"), (2, "Same Club"),
+                  (3, "Club Norte"), (4, "Same Club"), (4, "Another label")])
+
+    def test_review_resolves_only_explicit_people_and_keeps_each_file_unchanged(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            self.make_catalog(folder)
+            review = folder / "review.csv"
+            review.write_text("kind,person_id,team_label,club_id\n"
+                              "player,1, Same  CLub ,20\n"
+                              "coach,1,Variant club,10\n", encoding="utf-8-sig")
+            before = {file.name: file.read_bytes() for file in folder.iterdir()}
+
+            status, output, errors = run(folder, review)
+
+            self.assertEqual((0, ""), (status, errors))
+            report = json.loads(output)
+            self.assertEqual({"one_club_candidate": 1, "ambiguous_club": 1, "unmatched_club": 0,
+                              "no_club": 0, "conflicting_club_labels": 1, "manually_reviewed_club": 1},
+                             report["players"]["memberships"])
+            self.assertEqual(1, report["coaches"]["memberships"]["manually_reviewed_club"])
+            self.assertNotIn("Variant club", output)
+            self.assertNotIn("Same Club", output)
+            self.assertEqual(before, {file.name: file.read_bytes() for file in folder.iterdir()})
+            self.assertNotIn("manually_reviewed_club", json.loads(run(folder)[1])["players"]["memberships"])
+
+    def test_rejects_malformed_or_unverifiable_review_files_without_partial_output(self):
+        cases = [
+            ("member,1,Same Club,20\n", "tipo de persona"),
+            ("player,bad,Same Club,20\n", "ID no válido"),
+            ("player,1,Same Club,999\n", "club no disponible"),
+            ("player,99,Same Club,20\n", "persona no encontrada"),
+            ("player,1,Old private label,20\n", "nombre de equipo no coincide"),
+            ("player,4,Same Club,20\n", "nombres de equipo contradictorios"),
+            ("player,1,Same Club,10\n", "club no está entre los candidatos"),
+            ("player,1,Same Club,20\nplayer,1,Same Club,30\n", "decisión duplicada"),
+            ("player,1,Same Club,20,extra\n", "cuatro campos"),
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            folder = Path(tmp)
+            self.make_catalog(folder)
+            review = folder / "review.csv"
+            for contents, error in cases:
+                with self.subTest(error=error):
+                    review.write_text("kind,person_id,team_label,club_id\n" + contents, encoding="utf-8")
+                    before = review.read_bytes()
+                    status, output, errors = run(folder, review)
+                    self.assertEqual(1, status)
+                    self.assertEqual("", output)
+                    self.assertIn(error, errors)
+                    self.assertNotIn("Old private label", errors)
+                    self.assertEqual(before, review.read_bytes())
 
 
 if __name__ == "__main__":

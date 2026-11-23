@@ -1,6 +1,7 @@
 """Report-only validation for the local futsal encyclopedia workbooks."""
 
 import argparse
+import csv
 import json
 import re
 import sys
@@ -94,7 +95,54 @@ def classify_memberships(labels_by_id, clubs_by_name):
     return stats
 
 
-def validate(folder):
+def read_reviewed_links(path, people_by_kind, club_labels, clubs_by_name):
+    reviewed = {kind: set() for kind in people_by_kind}
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as source:
+            rows = csv.reader(source, strict=True)
+            if next(rows, None) != ["kind", "person_id", "team_label", "club_id"]:
+                raise ValidationError("La cabecera del CSV debe ser kind,person_id,team_label,club_id.")
+            for row in rows:
+                if not row:
+                    continue
+                line = rows.line_num
+                if len(row) != 4:
+                    raise ValidationError(f"CSV, línea {line}: se requieren cuatro campos.")
+                kind, person, label, club = (value.strip() for value in row)
+                if kind not in people_by_kind:
+                    raise ValidationError(f"CSV, línea {line}: tipo de persona no válido.")
+                if not all(VALID_ID.fullmatch(value) and int(value) > 0 for value in (person, club)):
+                    raise ValidationError(f"CSV, línea {line}: ID no válido.")
+                person_id, club_id = int(person), int(club)
+                if person_id in reviewed[kind]:
+                    raise ValidationError(f"CSV, línea {line}: decisión duplicada.")
+                labels = people_by_kind[kind].get(person_id)
+                if labels is None:
+                    raise ValidationError(f"CSV, línea {line}: persona no encontrada.")
+                if len(labels) > 1:
+                    raise ValidationError(f"CSV, línea {line}: nombres de equipo contradictorios.")
+                label = name_key(label)
+                if not labels or label not in labels:
+                    raise ValidationError(f"CSV, línea {line}: el nombre de equipo no coincide con el Excel.")
+                if not club_labels.get(club_id):
+                    raise ValidationError(f"CSV, línea {line}: club no disponible en el catálogo.")
+                candidates = clubs_by_name.get(label)
+                if candidates and club_id not in candidates:
+                    raise ValidationError(f"CSV, línea {line}: el club no está entre los candidatos.")
+                reviewed[kind].add(person_id)
+    except (OSError, UnicodeError, csv.Error) as error:
+        raise ValidationError("No se pudo leer el CSV de revisión. Comprueba la ruta y el formato UTF-8.") from error
+    return reviewed
+
+
+def memberships_after_review(labels_by_id, clubs_by_name, reviewed):
+    unresolved = {person_id: labels for person_id, labels in labels_by_id.items() if person_id not in reviewed}
+    result = classify_memberships(unresolved, clubs_by_name)
+    result["manually_reviewed_club"] = len(reviewed)
+    return result
+
+
+def validate(folder, reviewed_links=None):
     clubs_file = folder / CLUBS_FILE
     coaches_file = folder / COACHES_FILE
     player_files = sorted(path for path in folder.glob("*.xlsx") if PLAYERS_FILE.fullmatch(path.name) and path.is_file())
@@ -113,23 +161,33 @@ def validate(folder):
 
     coach_stats, coach_labels = group_records([coaches_file], "Treinadores", "Equipo Actual", MISSING_CLUB_LABELS)
     player_stats, player_labels = group_records(player_files, "Jogadores", "Equipo Actual", MISSING_CLUB_LABELS)
+    reviewed = (read_reviewed_links(reviewed_links, {"coach": coach_labels, "player": player_labels},
+                                    club_labels, clubs_by_name)
+                if reviewed_links is not None else None)
+
+    def memberships(kind, labels):
+        if reviewed is None:
+            return classify_memberships(labels, clubs_by_name)
+        return memberships_after_review(labels, clubs_by_name, reviewed[kind])
+
     return {
         "schema": "unifutsal.real-data-validation/v1",
         "clubs": {"files": 1, "records": club_stats,
                   "ambiguous_name_keys": sum(len(ids) > 1 for ids in clubs_by_name.values())},
         "coaches": {"files": 1, "records": coach_stats,
-                    "memberships": classify_memberships(coach_labels, clubs_by_name)},
+                    "memberships": memberships("coach", coach_labels)},
         "players": {"files": len(player_files), "records": player_stats,
-                    "memberships": classify_memberships(player_labels, clubs_by_name)},
+                    "memberships": memberships("player", player_labels)},
     }
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Valida los Excel locales de fútbol sala sin importar ni modificar datos.")
     parser.add_argument("folder", type=Path, metavar="carpeta", help="carpeta que contiene los Excel originales")
+    parser.add_argument("--reviewed-links", type=Path, metavar="CSV", help="decisiones manuales locales por ID de persona")
     args = parser.parse_args(argv)
     try:
-        report = validate(args.folder)
+        report = validate(args.folder, args.reviewed_links)
     except ValidationError as error:
         print(error, file=sys.stderr)
         return 1

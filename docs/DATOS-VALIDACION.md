@@ -22,6 +22,24 @@ Los recuentos de personas se hacen por ID, agrupando los duplicados de los libro
 
 El código de salida `0` indica que el informe se generó, no que el catálogo esté listo para importar. Si falta un libro obligatorio o cambia el esquema de columnas, el comando devuelve `1` sin producir un informe parcial. Los Excel y el eventual catálogo real se mantienen fuera del repositorio.
 
+## Registrar decisiones manuales
+
+Tras verificar el vínculo con una fuente fechada, guarda un CSV UTF-8 **fuera del repositorio**, por ejemplo en `../Datos/revision-local.csv`. Usa una fila por persona, con su ID, el texto de su equipo en el Excel y el ID del club corroborado. Estos valores son ficticios:
+
+```csv
+kind,person_id,team_label,club_id
+player,101,Club de ejemplo,20
+coach,204,Otra etiqueta de ejemplo,30
+```
+
+```powershell
+python -B scripts/validate_real_data.py "../Datos" --reviewed-links "../Datos/revision-local.csv"
+```
+
+El informe cuenta estas decisiones en `manually_reviewed_club`, sin mostrar IDs ni etiquetas y sin cambiarlas en el Excel. Cada decisión afecta solo a ese jugador o entrenador. Si el equipo ya tiene candidatos por nombre, el club elegido debe estar entre ellos. Las personas sin equipo o con etiquetas contradictorias quedan pendientes. Una fila inválida, duplicada o desactualizada detiene el informe completo; corrige la línea indicada y vuelve a ejecutarlo.
+
+La herramienta comprueba que la decisión concuerda con los libros; no verifica la fuente externa, la vigencia del vínculo ni los permisos para publicar los datos.
+
 ## Pruebas con libros sintéticos
 
 ```powershell
