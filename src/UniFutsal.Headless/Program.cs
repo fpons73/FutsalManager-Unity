@@ -307,21 +307,74 @@ if (args.Length > 0 && args[0] == "--demo-rounds")
         return 2;
     }
 
-    Console.WriteLine($"Temporada ficticia por jornadas | Semilla: {roundsSeed}");
-    if (completedRounds > 0)
+    return RunRoundMode(progress);
+}
+
+if (args.Length > 0 && args[0] == "--demo-rounds-load")
+{
+    const string usage = "Uso: --demo-rounds-load <archivo>";
+    if (args is ["--demo-rounds-load", "--help"])
     {
-        Console.WriteLine($"Jornadas retomadas: {completedRounds} de {progress.RoundCount}");
+        Console.WriteLine(usage);
+        return 0;
+    }
+    if (args.Length != 2)
+    {
+        Console.Error.WriteLine(usage);
+        return 2;
+    }
+
+    DemoRoundSeason progress;
+    try
+    {
+        progress = new SqliteDemoCareerStore().LoadRoundCheckpoint(args[1]);
+    }
+    catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
+        or ArgumentException or Microsoft.Data.Sqlite.SqliteException)
+    {
+        Console.Error.WriteLine("No se pudo cargar el progreso por jornadas. Comprueba el archivo y su compatibilidad.");
+        return 1;
+    }
+    return RunRoundMode(progress);
+}
+
+static int RunRoundMode(DemoRoundSeason progress)
+{
+    Console.WriteLine($"Temporada ficticia por jornadas | Semilla: {progress.Seed}");
+    if (progress.CompletedRounds > 0)
+    {
+        Console.WriteLine($"Jornadas retomadas: {progress.CompletedRounds} de {progress.RoundCount}");
         Console.WriteLine(progress.IsComplete ? "Clasificación final" : "Clasificación provisional");
         PrintStandings(progress.Standings);
     }
 
     while (!progress.IsComplete)
     {
-        Console.WriteLine("Pulsa Intro para jugar la siguiente jornada o escribe salir.");
+        Console.WriteLine("Pulsa Intro para jugar, escribe guardar <archivo> o salir.");
         var input = Console.ReadLine();
-        if (input == null || string.Equals(input.Trim(), "salir", StringComparison.OrdinalIgnoreCase))
+        var command = input?.Trim();
+        if (command == null || command.Equals("salir", StringComparison.OrdinalIgnoreCase))
             break;
-        if (input.Length != 0)
+        if (command.Equals("guardar", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.Error.WriteLine("Uso: guardar <archivo nuevo>");
+            continue;
+        }
+        if (command.StartsWith("guardar ", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                new SqliteDemoCareerStore().SaveRoundCheckpointNew(command.Substring("guardar ".Length).Trim(), progress);
+                Console.WriteLine($"Progreso guardado | Jornadas completadas: {progress.CompletedRounds}");
+            }
+            catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException
+                or ArgumentException or Microsoft.Data.Sqlite.SqliteException)
+            {
+                Console.Error.WriteLine("No se pudo guardar el progreso. Comprueba la ruta y que el archivo no exista.");
+            }
+            continue;
+        }
+        if (input!.Length != 0)
         {
             Console.WriteLine("Entrada no reconocida. No se jugó ninguna jornada.");
             continue;

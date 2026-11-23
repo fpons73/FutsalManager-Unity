@@ -199,6 +199,74 @@ public sealed class SqliteDemoCareerStoreTests
         Assert.Single(Directory.GetFiles(scratch.Root));
     }
 
+    [Fact]
+    public void RoundCheckpointRestoresTheTableAndContinuesFromTheNextRound()
+    {
+        using var scratch = new ScratchDirectory();
+        var store = new SqliteDemoCareerStore();
+        var progress = DemoRoundSeason.Resume(ulong.MaxValue, 2);
+        store.SaveRoundCheckpointNew(scratch.SavePath, progress);
+        var original = File.ReadAllBytes(scratch.SavePath);
+
+        var loaded = store.LoadRoundCheckpoint(scratch.SavePath);
+
+        Assert.Equal(2, loaded.CompletedRounds);
+        Assert.Equal(progress.Standings.Select(row => (row.Club, row.Points, row.GoalsFor, row.GoalsAgainst)),
+            loaded.Standings.Select(row => (row.Club, row.Points, row.GoalsFor, row.GoalsAgainst)));
+        var round = loaded.PlayNextRound();
+        Assert.All(round, match => Assert.Equal(3, match.Fixture.Round));
+        Assert.Equal(RoundScores(progress.PlayNextRound()), RoundScores(round));
+        Assert.Equal(original, File.ReadAllBytes(scratch.SavePath));
+    }
+
+    [Fact]
+    public void RoundCheckpointCannotReplaceAnExistingCareerSaveOrBeLoadedAsOne()
+    {
+        using var scratch = new ScratchDirectory();
+        var store = new SqliteDemoCareerStore();
+        store.SaveNew(scratch.SavePath, new DemoCareer(42).CompleteSeason(1));
+        var original = File.ReadAllBytes(scratch.SavePath);
+        var progress = DemoRoundSeason.Resume(42, 2);
+
+        Assert.Throws<IOException>(() => store.SaveRoundCheckpointNew(scratch.SavePath, progress));
+        Assert.Throws<InvalidDataException>(() => store.LoadRoundCheckpoint(scratch.SavePath));
+        Assert.Equal(original, File.ReadAllBytes(scratch.SavePath));
+        Assert.Equal(2, store.Load(scratch.SavePath).NextSeasonNumber);
+        Assert.Single(Directory.GetFiles(scratch.Root));
+
+        var checkpoint = Path.Combine(scratch.Root, "round.db");
+        store.SaveRoundCheckpointNew(checkpoint, progress);
+        var checkpointBytes = File.ReadAllBytes(checkpoint);
+        Assert.Throws<InvalidDataException>(() => store.Load(checkpoint));
+        Assert.Equal(checkpointBytes, File.ReadAllBytes(checkpoint));
+    }
+
+    [Theory]
+    [InlineData("schema_version = 99")]
+    [InlineData("engine_version = 'different-engine'")]
+    [InlineData("completed_rounds = 3")]
+    [InlineData("completed_rounds = 15")]
+    public void RefusesInvalidOrAlteredRoundCheckpointMetadata(string update)
+    {
+        using var scratch = new ScratchDirectory();
+        var store = new SqliteDemoCareerStore();
+        store.SaveRoundCheckpointNew(scratch.SavePath, DemoRoundSeason.Resume(42, 2));
+        using (var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+               { DataSource = scratch.SavePath, Pooling = false }.ToString()))
+        {
+            connection.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = $"UPDATE round_checkpoint SET {update}";
+            Assert.Equal(1, command.ExecuteNonQuery());
+        }
+        var original = File.ReadAllBytes(scratch.SavePath);
+        Assert.Throws<InvalidDataException>(() => store.LoadRoundCheckpoint(scratch.SavePath));
+        Assert.Equal(original, File.ReadAllBytes(scratch.SavePath));
+    }
+
+    private static IEnumerable<(string, string, int, int)> RoundScores(IEnumerable<DemoFixtureResult> matches) =>
+        matches.Select(match => (match.Fixture.HomeClub, match.Fixture.AwayClub, match.HomeGoals, match.AwayGoals));
+
     private static IEnumerable<(int, string, string, int, int)> Scores(DemoCareer career) =>
         career.CompletedSeasons.SelectMany(season => season.Result.Results.Select(match =>
             (season.Number, match.Fixture.HomeClub, match.Fixture.AwayClub, match.HomeGoals, match.AwayGoals)));

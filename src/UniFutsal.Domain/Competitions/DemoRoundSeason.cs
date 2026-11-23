@@ -11,11 +11,12 @@ namespace UniFutsal.Domain.Competitions
         private readonly Dictionary<string, DemoMatchSquad> _squads;
         private readonly List<DemoFixtureResult> _results = new List<DemoFixtureResult>();
 
+        public ulong Seed => _seed;
         public int RoundCount => _rounds.Length;
         public int CompletedRounds { get; private set; }
         public bool IsComplete => CompletedRounds == RoundCount;
         public IReadOnlyList<DemoStanding> Standings => DemoStanding.Build(_squads.Keys, _results);
-        internal IReadOnlyList<DemoFixtureResult> Results => _results.AsReadOnly();
+        public IReadOnlyList<DemoFixtureResult> Results => _results.AsReadOnly();
 
         public DemoRoundSeason(ulong seed)
         {

@@ -68,7 +68,15 @@ Para retomar manualmente después de dos jornadas, indica la misma semilla y el 
 dotnet run --project src/UniFutsal.Headless -- --demo-rounds 42 2
 ```
 
-La consola reconstruye la clasificación y la próxima pulsación de **Intro** juega la jornada 3. Este modo no escribe ningún guardado: anota la semilla y el número de jornadas si quieres retomarlo.
+La consola reconstruye la clasificación y la próxima pulsación de **Intro** juega la jornada 3.
+
+Para guardar antes de salir, escribe `guardar progreso.db` en la consola (la ruta se escribe sin comillas, incluso si contiene espacios). El archivo debe ser nuevo. Guardar no juega ninguna jornada.
+
+```powershell
+dotnet run --project src/UniFutsal.Headless -- --demo-rounds-load progreso.db
+```
+
+La carga recupera la clasificación y deja preparada la siguiente jornada. El guardado por jornadas es SQLite y tiene su propio formato versionado: no sustituye a los archivos de carrera de temporadas completas.
 
 ## Carrera de diez temporadas
 
