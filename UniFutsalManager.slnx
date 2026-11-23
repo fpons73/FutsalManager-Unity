@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/UniFutsal.Application/UniFutsal.Application.csproj" />
+    <Project Path="src/UniFutsal.Domain/UniFutsal.Domain.csproj" />
+    <Project Path="src/UniFutsal.Headless/UniFutsal.Headless.csproj" />
+    <Project Path="src/UniFutsal.Infrastructure/UniFutsal.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/UniFutsal.Tests/UniFutsal.Tests.csproj" />
+  </Folder>
+</Solution>

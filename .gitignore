@@ -1,0 +1,23 @@
+﻿bin/
+obj/
+.vs/
+*.user
+*.db
+*.db-wal
+*.db-shm
+/.codegraph/
+/.tmp-unity-publish/
+
+# Unity editor output and generated plug-ins. Run scripts/sync-unity-plugins.ps1 to regenerate the DLLs.
+/desktop/UniFutsal.Unity/Assembly-CSharp.csproj
+/desktop/UniFutsal.Unity/UniFutsal.Unity.slnx
+/desktop/UniFutsal.Unity/Assets/Plugins/Managed/*.dll
+/desktop/UniFutsal.Unity/Assets/Plugins/x86_64/*.dll
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+*.csproj.user
