@@ -7,6 +7,8 @@ obj/
 *.db-shm
 /.codegraph/
 /.tmp-unity-publish/
+__pycache__/
+/Datos/
 
 # Unity editor output and generated plug-ins. Run scripts/sync-unity-plugins.ps1 to regenerate the DLLs.
 /desktop/UniFutsal.Unity/Assembly-CSharp.csproj
