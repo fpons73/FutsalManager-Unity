@@ -26,6 +26,18 @@ namespace UniFutsal.Domain.Competitions
                 .ToDictionary(roster => roster.Key, roster => DemoMatchSquad.SelectDefault(roster), StringComparer.Ordinal);
         }
 
+        public static DemoRoundSeason Resume(ulong seed, int completedRounds)
+        {
+            var season = new DemoRoundSeason(seed);
+            if (completedRounds < 0 || completedRounds > season.RoundCount)
+                throw new ArgumentOutOfRangeException(nameof(completedRounds));
+
+            while (season.CompletedRounds < completedRounds)
+                season.PlayNextRound();
+
+            return season;
+        }
+
         public IReadOnlyList<DemoFixtureResult> PlayNextRound()
         {
             if (IsComplete)

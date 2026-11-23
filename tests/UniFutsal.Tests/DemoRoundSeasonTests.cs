@@ -72,6 +72,40 @@ public sealed class DemoRoundSeasonTests
         Assert.Equal(Table(DemoSeason.Simulate(42).Standings), Table(season.Standings));
     }
 
+    [Fact]
+    public void ResumesAfterTheRequestedRoundWithTheSameTableAndNextScores()
+    {
+        var uninterrupted = new DemoRoundSeason(42);
+        uninterrupted.PlayNextRound();
+        uninterrupted.PlayNextRound();
+
+        var resumed = DemoRoundSeason.Resume(42, completedRounds: 2);
+        Assert.Equal(2, resumed.CompletedRounds);
+        Assert.Equal(Table(uninterrupted.Standings), Table(resumed.Standings));
+
+        var next = resumed.PlayNextRound();
+        Assert.All(next, match => Assert.Equal(3, match.Fixture.Round));
+        Assert.Equal(Scores(uninterrupted.PlayNextRound()), Scores(next));
+    }
+
+    [Fact]
+    public void ResumesAnAlreadyCompletedSeasonWithoutPlayingAnotherRound()
+    {
+        var resumed = DemoRoundSeason.Resume(42, completedRounds: 14);
+        Assert.True(resumed.IsComplete);
+        Assert.Equal(14, resumed.CompletedRounds);
+        Assert.Equal(Table(DemoSeason.Simulate(42).Standings), Table(resumed.Standings));
+        Assert.Empty(resumed.PlayNextRound());
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(15)]
+    public void RejectsACompletedRoundCountOutsideTheCalendar(int count)
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => DemoRoundSeason.Resume(42, count));
+    }
+
     private static IEnumerable<(string, int, int, int, int, int, int, int)> Table(IEnumerable<DemoStanding> rows) =>
         rows.Select(row => (row.Club, row.Played, row.Wins, row.Draws, row.Losses, row.GoalsFor, row.GoalsAgainst, row.Points));
 

@@ -274,22 +274,47 @@ if (args.Length > 0 && args[0] == "--demo-career-recover")
 
 if (args.Length > 0 && args[0] == "--demo-rounds")
 {
-    const string usage = "Uso: --demo-rounds <semilla> (avanza la temporada una jornada cada vez)";
+    const string usage = "Uso: --demo-rounds <semilla> [jornadas completadas: 0–14]";
     if (args is ["--demo-rounds", "--help"])
     {
         Console.WriteLine(usage);
         return 0;
     }
 
-    if (args.Length != 2 || !ulong.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out var roundsSeed))
+    if (args.Length is < 2 or > 3 ||
+        !ulong.TryParse(args[1], NumberStyles.None, CultureInfo.InvariantCulture, out var roundsSeed))
     {
         Console.Error.WriteLine("La semilla debe ser un entero sin signo de 64 bits.");
         Console.Error.WriteLine(usage);
         return 2;
     }
 
-    var progress = new DemoRoundSeason(roundsSeed);
+    var completedRounds = 0;
+    if (args.Length == 3 && !int.TryParse(args[2], NumberStyles.None, CultureInfo.InvariantCulture, out completedRounds))
+    {
+        Console.Error.WriteLine("El número de jornadas completadas debe ser un entero no negativo.");
+        return 2;
+    }
+
+    DemoRoundSeason progress;
+    try
+    {
+        progress = DemoRoundSeason.Resume(roundsSeed, completedRounds);
+    }
+    catch (ArgumentOutOfRangeException)
+    {
+        Console.Error.WriteLine("El número de jornadas completadas supera el total de la temporada.");
+        return 2;
+    }
+
     Console.WriteLine($"Temporada ficticia por jornadas | Semilla: {roundsSeed}");
+    if (completedRounds > 0)
+    {
+        Console.WriteLine($"Jornadas retomadas: {completedRounds} de {progress.RoundCount}");
+        Console.WriteLine(progress.IsComplete ? "Clasificación final" : "Clasificación provisional");
+        PrintStandings(progress.Standings);
+    }
+
     while (!progress.IsComplete)
     {
         Console.WriteLine("Pulsa Intro para jugar la siguiente jornada o escribe salir.");

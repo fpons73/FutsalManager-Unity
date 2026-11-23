@@ -60,7 +60,15 @@ El resultado de cada encuentro se conserva en memoria durante la ejecución.
 dotnet run --project src/UniFutsal.Headless -- --demo-rounds 42
 ```
 
-Pulsa **Intro** para simular solo la siguiente jornada y ver sus cuatro marcadores y la clasificación provisional. La tabla cuenta únicamente los partidos disputados; tras la jornada 14 es definitiva y coincide con la del modo de temporada completa para la misma semilla. Escribe `salir` para detenerte. Este modo todavía no guarda el progreso entre jornadas.
+Pulsa **Intro** para simular solo la siguiente jornada y ver sus cuatro marcadores y la clasificación provisional. La tabla cuenta únicamente los partidos disputados; tras la jornada 14 es definitiva y coincide con la del modo de temporada completa para la misma semilla. Escribe `salir` para detenerte.
+
+Para retomar manualmente después de dos jornadas, indica la misma semilla y el número de jornadas completadas:
+
+```powershell
+dotnet run --project src/UniFutsal.Headless -- --demo-rounds 42 2
+```
+
+La consola reconstruye la clasificación y la próxima pulsación de **Intro** juega la jornada 3. Este modo no escribe ningún guardado: anota la semilla y el número de jornadas si quieres retomarlo.
 
 ## Carrera de diez temporadas
 
