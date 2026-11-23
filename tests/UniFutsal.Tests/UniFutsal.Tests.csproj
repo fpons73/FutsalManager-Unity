@@ -22,6 +22,7 @@
     <ProjectReference Include="..\..\src\UniFutsal.Domain\UniFutsal.Domain.csproj" />
     <ProjectReference Include="..\..\src\UniFutsal.Application\UniFutsal.Application.csproj" />
     <ProjectReference Include="..\..\src\UniFutsal.Infrastructure\UniFutsal.Infrastructure.csproj" />
+    <ProjectReference Include="..\..\src\UniFutsal.Headless\UniFutsal.Headless.csproj" />
   </ItemGroup>
 
 </Project>

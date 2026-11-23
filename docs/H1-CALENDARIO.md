@@ -78,6 +78,8 @@ dotnet run --project src/UniFutsal.Headless -- --demo-rounds-load progreso.db
 
 La carga recupera la clasificación y deja preparada la siguiente jornada. El guardado por jornadas es SQLite y tiene su propio formato versionado: no sustituye a los archivos de carrera de temporadas completas.
 
+La suite de `dotnet test` también comprueba este flujo en procesos separados. Para ejecutar solo esas pruebas: `dotnet test --filter FullyQualifiedName~HeadlessRoundCheckpointTests`.
+
 ## Carrera de diez temporadas
 
 ```powershell
