@@ -39,11 +39,12 @@ def workbook(path, sheet, rows):
                         f'<worksheet xmlns="{namespace}"><sheetData>{"".join(content)}</sheetData></worksheet>')
 
 
-def run(folder, review=None):
+def run(folder, review=None, extra=()):
     output, errors = io.StringIO(), io.StringIO()
     args = [str(folder)]
     if review is not None:
         args += ["--reviewed-links", str(review)]
+    args.extend(extra)
     with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
         status = validate_real_data.main(args)
     return status, output.getvalue(), errors.getvalue()
@@ -165,6 +166,73 @@ class ReviewedLinksTests(unittest.TestCase):
                     self.assertIn(error, errors)
                     self.assertNotIn("Old private label", errors)
                     self.assertEqual(before, review.read_bytes())
+
+
+class CandidateLookupTests(unittest.TestCase):
+    def make_catalog(self, folder):
+        workbook(folder / CLUBS, "Equipas",
+                 [("ID", "Nombre", "País", "Ciudad"), (30, "Same Club", "Spain", "Madrid"),
+                  (20, "Same Club", "Portugal", "Porto"), (10, "Club Norte", "Spain", "")])
+        workbook(folder / COACHES, "Treinadores",
+                 [("ID", "Equipo Actual", "Nombre"), (1, "Club Norte", "Hidden Coach")])
+        workbook(folder / PLAYERS.format(1), "Jogadores",
+                 [("ID", "Equipo Actual", "Nombre"), (1, "Same Club", "Hidden Player"),
+                  (2, "", ""), (3, "Unmatched Label", ""), (4, "Same Club", ""), (4, "Club Norte", "")])
+
+    def test_lookup_lists_all_matching_club_ids_without_disclosing_personal_fields(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            folder = Path(scratch)
+            self.make_catalog(folder)
+            before = {f.name: f.read_bytes() for f in folder.iterdir()}
+
+            status, output, errors = run(folder, extra=["--lookup", "player", "1"])
+
+            self.assertEqual((0, ""), (status, errors))
+            report = json.loads(output)
+            self.assertEqual("unifutsal.club-candidate-lookup/v1", report["schema"])
+            self.assertEqual(("player", 1, "ambiguous_club"), (report["kind"], report["person_id"], report["status"]))
+            self.assertEqual([{"team_label": "same club", "candidates": [
+                {"club_id": 20, "entries": [{"name": "Same Club", "country": "Portugal", "city": "Porto"}]},
+                {"club_id": 30, "entries": [{"name": "Same Club", "country": "Spain", "city": "Madrid"}]},
+            ]}], report["team_labels"])
+            self.assertNotIn("Hidden Player", output)
+            self.assertEqual(before, {f.name: f.read_bytes() for f in folder.iterdir()})
+
+    def test_lookup_preserves_conflicts_unknown_labels_and_missing_clubs(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            folder = Path(scratch)
+            self.make_catalog(folder)
+            for kind, person, state, labels in [
+                ("player", "2", "no_club", []),
+                ("player", "3", "unmatched_club", ["unmatched label"]),
+                ("player", "4", "conflicting_club_labels", ["club norte", "same club"]),
+                ("coach", "1", "one_club_candidate", ["club norte"]),
+            ]:
+                with self.subTest(state=state):
+                    status, output, errors = run(folder, extra=["--lookup", kind, person])
+                    self.assertEqual((0, ""), (status, errors))
+                    result = json.loads(output)
+                    self.assertEqual(state, result["status"])
+                    self.assertEqual(labels, [item["team_label"] for item in result["team_labels"]])
+                    if state == "unmatched_club":
+                        self.assertEqual([], result["team_labels"][0]["candidates"])
+                    if kind == "coach":
+                        self.assertIsNone(result["team_labels"][0]["candidates"][0]["entries"][0]["city"])
+                        self.assertNotIn("Hidden Coach", output)
+
+    def test_lookup_rejects_an_invalid_or_absent_id_without_partial_output(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            folder = Path(scratch)
+            self.make_catalog(folder)
+            for kind, person, expected in [
+                ("person", "1", "tipo de persona"),
+                ("player", "0", "ID no válido"),
+                ("player", "99", "persona no encontrada"),
+            ]:
+                with self.subTest(expected=expected):
+                    status, output, errors = run(folder, extra=["--lookup", kind, person])
+                    self.assertEqual((1, ""), (status, output))
+                    self.assertIn(expected, errors)
 
 
 if __name__ == "__main__":

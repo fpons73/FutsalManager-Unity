@@ -40,6 +40,16 @@ El informe cuenta estas decisiones en `manually_reviewed_club`, sin mostrar IDs 
 
 La herramienta comprueba que la decisión concuerda con los libros; no verifica la fuente externa, la vigencia del vínculo ni los permisos para publicar los datos.
 
+## Consultar los clubes candidatos de una persona
+
+```powershell
+python -B scripts/validate_real_data.py "../Datos" --lookup player 101
+```
+
+Usa `player` o `coach` y el ID del Excel correspondiente; `101` es un ejemplo. La consulta muestra las etiquetas del equipo normalizadas y, por cada coincidencia, el ID del club, su nombre y el país y la ciudad si están informados. El catálogo debe incluir las columnas `País` y `Ciudad`, aunque sus celdas puedan estar vacías. Si hay varios candidatos o etiquetas contradictorias, los muestra por separado sin resolver el vínculo.
+
+El resultado es para revisión local: no incluye el nombre ni la fecha de nacimiento de la persona, pero sí el ID consultado. No publiques la salida. Una vez corroborado el vínculo, puedes copiar el ID del club y la etiqueta al CSV manual. `--lookup` no se combina con `--reviewed-links` ni escribe en los Excel.
+
 ## Pruebas con libros sintéticos
 
 ```powershell

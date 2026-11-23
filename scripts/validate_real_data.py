@@ -142,13 +142,51 @@ def memberships_after_review(labels_by_id, clubs_by_name, reviewed):
     return result
 
 
-def validate(folder, reviewed_links=None):
+def workbook_paths(folder):
     clubs_file = folder / CLUBS_FILE
     coaches_file = folder / COACHES_FILE
     player_files = sorted(path for path in folder.glob("*.xlsx") if PLAYERS_FILE.fullmatch(path.name) and path.is_file())
     if not clubs_file.is_file() or not coaches_file.is_file() or not player_files:
         raise ValidationError("Faltan los Excel esperados de clubes, entrenadores o jugadores.")
+    return clubs_file, coaches_file, player_files
 
+
+def lookup_candidates(folder, kind, raw_person_id):
+    if kind not in ("player", "coach"):
+        raise ValidationError("La consulta requiere un tipo de persona válido: player o coach.")
+    if not VALID_ID.fullmatch(raw_person_id) or int(raw_person_id) == 0:
+        raise ValidationError("La consulta contiene un ID no válido.")
+    person_id = int(raw_person_id)
+    clubs_file, coaches_file, player_files = workbook_paths(folder)
+    paths, sheet = (player_files, "Jogadores") if kind == "player" else ([coaches_file], "Treinadores")
+    _, people = group_records(paths, sheet, "Equipo Actual", MISSING_CLUB_LABELS)
+    labels = people.get(person_id)
+    if labels is None:
+        raise ValidationError("Consulta: persona no encontrada en los Excel.")
+    candidates_by_label = {label: defaultdict(set) for label in labels}
+    for raw_id, raw_name, country, city in read_rows(clubs_file, "Equipas", ("ID", "Nombre", "País", "Ciudad")):
+        label = name_key(raw_name)
+        candidate_id = text(raw_id)
+        if label in candidates_by_label and VALID_ID.fullmatch(candidate_id) and int(candidate_id) > 0:
+            candidates_by_label[label][int(candidate_id)].add((text(raw_name), text(country), text(city)))
+
+    status = classify_memberships({person_id: labels}, candidates_by_label)
+    teams = []
+    for label, candidates in sorted(candidates_by_label.items()):
+        teams.append({
+            "team_label": label,
+            "candidates": [
+                {"club_id": club_id, "entries": [
+                    {"name": name, "country": country or None, "city": city or None}
+                    for name, country, city in sorted(entries)]}
+                for club_id, entries in sorted(candidates.items())],
+        })
+    return {"schema": "unifutsal.club-candidate-lookup/v1", "kind": kind, "person_id": person_id,
+            "status": next(state for state, count in status.items() if count), "team_labels": teams}
+
+
+def validate(folder, reviewed_links=None):
+    clubs_file, coaches_file, player_files = workbook_paths(folder)
     club_stats, club_labels = group_records([clubs_file], "Equipas", "Nombre")
     if not club_labels:
         raise ValidationError("El Excel de clubes no contiene identificadores válidos.")
@@ -184,10 +222,12 @@ def validate(folder, reviewed_links=None):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Valida los Excel locales de fútbol sala sin importar ni modificar datos.")
     parser.add_argument("folder", type=Path, metavar="carpeta", help="carpeta que contiene los Excel originales")
-    parser.add_argument("--reviewed-links", type=Path, metavar="CSV", help="decisiones manuales locales por ID de persona")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--reviewed-links", type=Path, metavar="CSV", help="decisiones manuales locales por ID de persona")
+    mode.add_argument("--lookup", nargs=2, metavar=("TIPO", "ID"), help="consulta clubes candidatos para un ID de player o coach")
     args = parser.parse_args(argv)
     try:
-        report = validate(args.folder, args.reviewed_links)
+        report = lookup_candidates(args.folder, *args.lookup) if args.lookup else validate(args.folder, args.reviewed_links)
     except ValidationError as error:
         print(error, file=sys.stderr)
         return 1
